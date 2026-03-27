@@ -101,6 +101,86 @@ class SimpleNeuralNetwork:
         self.W2 = data['W2']
         self.b2 = data['b2']
 
+# ---------- Линейная регрессия для прогнозирования ----------
+class LinearRegression:
+    """Простая линейная регрессия для предсказания на основе временного ряда."""
+    def __init__(self):
+        self.slope = 0.0
+        self.intercept = 0.0
+
+    def fit(self, X, y):
+        """X - список дней (например, 0,1,2,...), y - значения quantity."""
+        n = len(X)
+        if n == 0:
+            return
+        sum_x = sum(X)
+        sum_y = sum(y)
+        sum_xy = sum(x * y for x, y in zip(X, y))
+        sum_x2 = sum(x**2 for x in X)
+        denominator = n * sum_x2 - sum_x**2
+        if denominator == 0:
+            self.slope = 0
+            self.intercept = sum_y / n
+        else:
+            self.slope = (n * sum_xy - sum_x * sum_y) / denominator
+            self.intercept = (sum_y - self.slope * sum_x) / n
+
+    def predict(self, X):
+        """X - список дней для предсказания."""
+        return [self.slope * x + self.intercept for x in X]
+
+    def predict_next(self, days_count):
+        """Предсказать следующее значение после days_count дней."""
+        return self.slope * days_count + self.intercept
+
+# ---------- Прогнозирование физической активности ----------
+def predict_activity_progress(db, activity_type, days_ahead=1):
+    """
+    Прогнозирует прогресс для activity_type на days_ahead дней вперёд.
+    Возвращает: {'max_predicted': float, 'recommended': float}
+    """
+    from datetime import datetime, timedelta
+
+    # Получить данные за последние 30 дней
+    end_date = datetime.today().date()
+    start_date = end_date - timedelta(days=30)
+
+    # Получить записи из базы
+    conn = db.get_conn()
+    conn.row_factory = None  # использовать dict
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT date, quantity FROM biometric_physical_activity
+        WHERE activity_type = ? AND date BETWEEN ? AND ?
+        ORDER BY date
+    """, (activity_type, start_date.isoformat(), end_date.isoformat()))
+    rows = cursor.fetchall()
+    conn.close()
+
+    if len(rows) < 2:
+        # Недостаточно данных, вернуть среднее
+        avg = sum(r[1] for r in rows) / len(rows) if rows else 0
+        return {'max_predicted': avg, 'recommended': avg * 1.05}
+
+    # Подготовить данные: дни от 0 до len-1, quantity
+    dates = [datetime.fromisoformat(r[0]).date() for r in rows]
+    quantities = [r[1] for r in rows]
+    days = list(range(len(dates)))
+
+    # Обучить линейную регрессию
+    lr = LinearRegression()
+    lr.fit(days, quantities)
+
+    # Предсказать на следующий день
+    next_day = len(days)
+    max_predicted = lr.predict_next(next_day)
+
+    # Рекомендация: предсказанное + 5% прирост, но не меньше последнего
+    last_quantity = quantities[-1]
+    recommended = max(last_quantity * 1.05, max_predicted * 0.95)
+
+    return {'max_predicted': round(max_predicted, 1), 'recommended': round(recommended, 1)}
+
 # ---------- Генетический алгоритм ----------
 class GeneticOptimizer:
     def __init__(self, population_size, genes, fitness, mutation_rate=0.1, crossover_rate=0.7):

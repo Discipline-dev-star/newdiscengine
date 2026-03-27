@@ -270,4 +270,14 @@ def register_biometric_api(app, db):
             conn.close()
             return jsonify({'status': 'error', 'message': 'DB error: ' + str(e)}), 500
 
+    @bp.route('/activity/predict/<activity_type>', methods=['GET'])
+    def predict_activity(activity_type):
+        """Прогнозирует прогресс для активности."""
+        try:
+            from core.ml import predict_activity_progress
+            result = predict_activity_progress(db, activity_type)
+            return jsonify({'status': 'success', 'data': result})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
     app.register_blueprint(bp)

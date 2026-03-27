@@ -362,6 +362,37 @@ async function deleteMeasurement(id) {
 async function loadActivities() {
     const data = await fetchJSON('/api/biometric_physical_activity/list?order_by=date DESC');
     renderActivitiesTable(data.data);
+    await loadActivityPredictions();
+}
+
+async function loadActivityPredictions() {
+    const typesData = await fetchJSON('/api/biometric/activity/types');
+    const types = typesData.data;
+    const predictions = {};
+    for (const type of types) {
+        try {
+            const pred = await fetchJSON(`/api/biometric/activity/predict/${encodeURIComponent(type)}`);
+            predictions[type] = pred.data;
+        } catch (e) {
+            console.warn(`Failed to predict for ${type}`, e);
+        }
+    }
+    renderActivityPredictions(predictions);
+}
+
+function renderActivityPredictions(predictions) {
+    const container = document.getElementById('activityPredictions');
+    container.innerHTML = '';
+    for (const [type, pred] of Object.entries(predictions)) {
+        const div = document.createElement('div');
+        div.className = 'prediction-item';
+        div.innerHTML = `
+            <strong>${type}:</strong> 
+            Максимум завтра: ${pred.max_predicted}, 
+            Рекомендация: ${pred.recommended}
+        `;
+        container.appendChild(div);
+    }
 }
 
 function renderActivitiesTable(activities) {
